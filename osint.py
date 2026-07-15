@@ -1,9 +1,11 @@
+import ipaddress
 import argparse
 import os
 import json
 import report
 from datetime import datetime
 
+from modules import ip as mod_ip
 from modules import username as mod_username
 from modules import dominio as mod_dominio
 from modules import correo as mod_correo
@@ -14,6 +16,7 @@ MODULOS = {
     "username": mod_username.run,
     "dominio": mod_dominio.run,
     "email": mod_correo.run,
+    "ip": mod_ip.run,
 }
 
 
@@ -21,6 +24,11 @@ def detectar_tipo(dato):
     """Adivina el tipo de dato a partir de su forma."""
     if "@" in dato:
         return "email"
+    try:
+        ipaddress.ip_address(dato)   # ¿es una IP valida? (v4 o v6)
+        return "ip"
+    except ValueError:
+        pass                         # no lo era, seguimos probando
     if "." in dato and " " not in dato:
         return "dominio"
     return "username"
@@ -40,7 +48,7 @@ def guardar(resultado):
 def main():
     parser = argparse.ArgumentParser(description="Orquestador OSINT")
     parser.add_argument("dato", help="Dato a investigar (alias, dominio, email...)")
-    parser.add_argument("--tipo", choices=["username", "dominio", "email"],
+    parser.add_argument("--tipo", choices=["username", "dominio", "email", "ip"],
                         help="Forzar el tipo (si no, se autodetecta)")
     args = parser.parse_args()
 

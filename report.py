@@ -187,8 +187,79 @@ def _cuerpo_email(resultado):
 
     return resumen + dominio_html + grav_html + br_html
 
+def _cuerpo_ip(resultado):
+    d = resultado["resultados"]
+    val = d.get("validacion", {})
+    g = d.get("geo", {})
+    rdap = d.get("rdap", {})
+    shodan = d.get("shodan", {})
+    rdns_list = d.get("rdns", [])
 
-def generar_html(resultado, carpeta="output"):
+    puertos = shodan.get("puertos", []) if shodan.get("consultado") else []
+    vulns = shodan.get("vulns", []) if shodan.get("consultado") else []
+
+    resumen = f"""<div class="summary">
+      <div class="card"><div class="n" style="font-size:18px">{html.escape(str(g.get('pais') or '-'))}</div><div class="l">Pais</div></div>
+      <div class="card"><div class="n">{len(puertos)}</div><div class="l">Puertos abiertos</div></div>
+      <div class="card"><div class="n">{len(vulns)}</div><div class="l">CVEs conocidos</div></div>
+    </div>"""
+
+    if not val.get("valida"):
+        return resumen + "<h2>Validacion</h2><p>No es una direccion IP valida.</p>"
+
+    aviso = ""
+    if val.get("privada"):
+        aviso = "<p><strong>Aviso:</strong> es una IP privada (red interna); las fuentes publicas no tienen datos sobre ella.</p>"
+
+    geo_html = "<h2>Geolocalizacion y red</h2>"
+    if g:
+        geo_html += f"""<dl>
+          <dt>Ubicacion</dt><dd>{html.escape(str(g.get('ciudad') or '-'))}, {html.escape(str(g.get('region') or '-'))}, {html.escape(str(g.get('pais') or '-'))}</dd>
+          <dt>Coordenadas</dt><dd>{html.escape(str(g.get('latitud')))}, {html.escape(str(g.get('longitud')))}</dd>
+          <dt>Zona horaria</dt><dd>{html.escape(str(g.get('zona_horaria') or '-'))}</dd>
+          <dt>ASN</dt><dd>{html.escape(str(g.get('asn') or '-'))}</dd>
+          <dt>Organizacion</dt><dd>{html.escape(str(g.get('org') or '-'))}</dd>
+          <dt>ISP</dt><dd>{html.escape(str(g.get('isp') or '-'))}</dd>
+        </dl>"""
+    else:
+        geo_html += "<p>(sin datos)</p>"
+
+    if rdns_list:
+        items = "".join(f"<li><code>{html.escape(str(n))}</code></li>" for n in rdns_list)
+        rdns_html = f"<h2>DNS inverso (PTR)</h2><ul class='subs'>{items}</ul>"
+    else:
+        rdns_html = "<h2>DNS inverso (PTR)</h2><p>(ninguno)</p>"
+
+    rdap_html = "<h2>Asignacion de red (RDAP)</h2>"
+    if rdap:
+        rdap_html += "<dl>" + "".join(
+            f"<dt>{html.escape(str(k))}</dt><dd>{html.escape(str(v))}</dd>"
+            for k, v in rdap.items() if v
+        ) + "</dl>"
+    else:
+        rdap_html += "<p>(sin datos)</p>"
+
+    if shodan.get("consultado"):
+        p_html = "".join(f"<li><code>{html.escape(str(p))}</code></li>" for p in puertos) or "<li>(ninguno conocido)</li>"
+        shodan_html = f"<h2>Puertos abiertos (Shodan InternetDB)</h2><ul class='subs'>{p_html}</ul>"
+        if vulns:
+            v_html = "".join(
+                f"<li><a href='https://nvd.nist.gov/vuln/detail/{html.escape(str(v))}' "
+                f"target='_blank' rel='noopener'>{html.escape(str(v))}</a></li>" for v in vulns
+            )
+            shodan_html += f"<h2>Vulnerabilidades conocidas</h2><ul class='subs'>{v_html}</ul>"
+        hn = shodan.get("hostnames", [])
+        if hn:
+            h_html = "".join(f"<li>{html.escape(str(x))}</li>" for x in hn)
+            shodan_html += f"<h2>Hostnames asociados</h2><ul class='subs'>{h_html}</ul>"
+    else:
+        shodan_html = f"<h2>Shodan</h2><p>No consultado ({html.escape(str(shodan.get('motivo','')))}).</p>"
+
+    return resumen + aviso + geo_html + rdns_html + rdap_html + shodan_html
+
+
+def construir_html(resultado):
+    """Construye el informe HTML completo y lo devuelve como cadena."""
     modulo = resultado.get("modulo", "?")
     objetivo = resultado.get("objetivo", "")
     fecha = resultado.get("fecha", datetime.now().isoformat(timespec="seconds"))
@@ -197,10 +268,12 @@ def generar_html(resultado, carpeta="output"):
         cuerpo_datos = _cuerpo_username(resultado)
     elif modulo == "dominio":
         cuerpo_datos = _cuerpo_dominio(resultado)
-    elif modulo == "dominio":
-        cuerpo_datos = _cuerpo_dominio(resultado)
     elif modulo == "email":
         cuerpo_datos = _cuerpo_email(resultado)
+    elif modulo == "email":
+        cuerpo_datos = _cuerpo_email(resultado)
+    elif modulo == "ip":
+        cuerpo_datos = _cuerpo_ip(resultado)
     else:
         cuerpo_datos = "<p>Modulo sin plantilla de informe.</p>"
 
@@ -210,10 +283,16 @@ def generar_html(resultado, carpeta="output"):
       <p class="meta">Modulo: {html.escape(modulo)} &middot; Generado: {html.escape(fecha)}</p>
     </header>"""
 
+    return _shell(f"Informe OSINT - {objetivo}", cabecera + cuerpo_datos)
+
+
+def generar_html(resultado, carpeta="output"):
+    """Guarda el informe HTML en disco y devuelve la ruta."""
     os.makedirs(carpeta, exist_ok=True)
-    seguro = objetivo.replace("@", "_at_").replace("/", "_")
+    modulo = resultado.get("modulo", "?")
+    seguro = resultado.get("objetivo", "").replace("@", "_at_").replace("/", "_")
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     ruta = os.path.join(carpeta, f"{seguro}_{modulo}_{ts}.html")
     with open(ruta, "w", encoding="utf-8") as f:
-        f.write(_shell(f"Informe OSINT - {objetivo}", cabecera + cuerpo_datos))
+        f.write(construir_html(resultado))
     return ruta
