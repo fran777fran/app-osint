@@ -32,12 +32,13 @@ PAGINA_INICIO = """<!DOCTYPE html>
     <h1>Orquestador OSINT</h1>
     <p>Introduce un alias, dominio o email y elige el tipo (o deja autodetectar).</p>
     <form action="/buscar" method="post">
-      <input name="dato" placeholder="torvalds  ·  webejemplo.com  ·  correo@dominio.com" required autofocus>
+      <input name="dato" placeholder="torvalds · espadasymas.com · correo@dominio.com · 8.8.8.8" required autofocus>
       <select name="tipo">
         <option value="auto">Autodetectar tipo</option>
         <option value="username">Username / alias</option>
         <option value="dominio">Dominio</option>
         <option value="email">Email</option>
+        <option value="ip">Direccion IP</option>
       </select>
       <button type="submit">Buscar</button>
     </form>
