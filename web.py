@@ -1,12 +1,11 @@
 from datetime import datetime
 
-from fastapi import FastAPI, Form
-from fastapi.responses import HTMLResponse
+from flask import Flask, request
 
-from osint import MODULOS, detectar_tipo   # <- reutilizamos el orquestador
-import report                              # <- reutilizamos el informe
+from osint import MODULOS, detectar_tipo   # <- el mismo orquestador de siempre
+import report                              # <- el mismo informe de siempre
 
-app = FastAPI(title="Orquestador OSINT")
+app = Flask(__name__)
 
 PAGINA_INICIO = """<!DOCTYPE html>
 <html lang="es">
@@ -21,7 +20,7 @@ PAGINA_INICIO = """<!DOCTYPE html>
           box-shadow:0 4px 24px rgba(0,0,0,.06); }
   h1 { margin:0 0 6px; font-size:22px; }
   p { color:#6b7280; margin:0 0 22px; font-size:14px; }
-  input, select, button { font-size:15px; padding:11px 12px; border:1px solid #d1d5db; border-radius:8px; width:100%; }
+  input, select, button { font-size:16px; padding:11px 12px; border:1px solid #d1d5db; border-radius:8px; width:100%; }
   select { margin-top:10px; }
   button { margin-top:14px; background:#2d6cdf; color:#fff; border:none; font-weight:600; cursor:pointer; }
   button:hover { background:#255ac0; }
@@ -30,7 +29,7 @@ PAGINA_INICIO = """<!DOCTYPE html>
 <body>
   <div class="wrap">
     <h1>Orquestador OSINT</h1>
-    <p>Introduce un alias, dominio o email y elige el tipo (o deja autodetectar).</p>
+    <p>Introduce un alias, dominio, email o IP.</p>
     <form action="/buscar" method="post">
       <input name="dato" placeholder="torvalds · espadasymas.com · correo@dominio.com · 8.8.8.8" required autofocus>
       <select name="tipo">
@@ -47,28 +46,39 @@ PAGINA_INICIO = """<!DOCTYPE html>
 </html>"""
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/")
 def inicio():
     return PAGINA_INICIO
 
 
-@app.post("/buscar", response_class=HTMLResponse)
-def buscar(dato: str = Form(...), tipo: str = Form("auto")):
+@app.post("/buscar")
+def buscar():
+    dato = (request.form.get("dato") or "").strip()
+    tipo = request.form.get("tipo", "auto")
+
+    if not dato:
+        return "<p>Falta el dato.</p><a href='/'>&larr; Volver</a>"
+
     if tipo == "auto":
         tipo = detectar_tipo(dato)
 
     run = MODULOS.get(tipo)
     if run is None:
-        return HTMLResponse(f"<p>No hay modulo para el tipo '{tipo}'.</p><a href='/'>&larr; Volver</a>")
+        return f"<p>No hay modulo para el tipo '{tipo}'.</p><a href='/'>&larr; Volver</a>"
 
     resultado = run(dato)
     resultado["fecha"] = datetime.now().isoformat(timespec="seconds")
 
     html_informe = report.construir_html(resultado)
-    # Inyectamos un enlace para volver al formulario
     html_informe = html_informe.replace(
         '<div class="container">',
         '<div class="container"><p><a href="/">&larr; Nueva busqueda</a></p>',
         1,
     )
-    return HTMLResponse(html_informe)
+    return html_informe
+
+
+if __name__ == "__main__":
+    # 0.0.0.0 = acepta conexiones de cualquier interfaz (util si algun dia
+    # quieres entrar desde otro aparato de la red)
+    app.run(host="0.0.0.0", port=8001, debug=False)

@@ -1,5 +1,3 @@
 requests
 dnspython
-fastapi
-uvicorn[standard]
-python-multipart
+flask
